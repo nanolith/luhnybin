@@ -1,4 +1,4 @@
-.PHONY ALL
+.PHONY: ALL
 
 ALL : .bison-install
 
@@ -11,5 +11,7 @@ ALL : .bison-install
 	touch .bison-build
 
 .bison-config :
-	(cd bison && ./configure --PREFIX=$(BUILD_DIR)/bison)
+	touch bison/Makefile.in
+	touch bison/configure
+	(cd bison && ./configure --prefix=$(BUILD_DIR)/bison)
 	touch .bison-config

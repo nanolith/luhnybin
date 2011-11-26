@@ -1,7 +1,7 @@
 BUILD_DIR=$(shell cd .. && echo `pwd`/build)
 export BUILD_DIR
 
-.PHONY contrib ALL
+.PHONY: contrib ALL
 
 ALL : contrib
 
