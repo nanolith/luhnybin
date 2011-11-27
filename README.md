@@ -15,4 +15,4 @@ src subdirectory.
 
 For more information, please see the src/cxxfilter/README.md.
 
-[cxxfilter_doc]: src/cxxfilter/README.md "cxxfilter source documentation"
+[cxxfilter_doc]: blob/master/src/cxxfilter/README.md "cxxfilter source documentation"
