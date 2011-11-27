@@ -67,8 +67,8 @@ Since this document combines both Markdown and source code, proper syntax
 highlighting is really required for both.  I can't provide syntax highlighting
 for everyone's favorite IDEs, but I can provide [vim][vim_website] syntax files.
 
-To use these files, copy the directory structure provided in vim/syntax to
-your own ~/.vim/syntax directory.  Note that the location of your vim syntax
+To use these files, copy the directory structure provided in luhnybin/vim to
+your own ~/.vim/ directory.  Note that the location of your vim 
 directory may vary depending upon your operating system choice.
 
 Software Description
