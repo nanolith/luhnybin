@@ -259,7 +259,7 @@ expecting the luhn check to process the sequence from right to left, find all
 subsequences that pass a luhn check and are at least 14 digits long, and scrub
 these from the buffer.  If *any* luhn sequence is found, then it will return a
 status of E LUHN, which we will pass back to the caller.  It is the caller's
-responsibility to call the calvary or do whatever else must be done.
+responsibility to call the cavalry or do whatever else must be done.
 
     <<transition::LuhnCheck::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::LuhnCheck::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
@@ -605,7 +605,7 @@ This is the main routine:
 
             if (E_LUHN == filterByte(ch, applicationState, cout))
             {
-                //TODO: call the calvary
+                //TODO: call the cavalry
             }
         }
     }
