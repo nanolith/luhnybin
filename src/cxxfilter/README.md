@@ -205,7 +205,7 @@ far the easiest.
     <<transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
-        out.write((const char*)&byte, sizeof(byte));
+        out.put((const char&)byte);
 
         return E_SUCCESS;
     }
@@ -270,7 +270,7 @@ responsibility to call the cavalry or do whatever else must be done.
         //write the buffered, possibly scrubbed, sequence
         out.write(luhn.bytes(), luhn.size());
         //write the sequence breaking byte
-        out.write((const char*)&byte, sizeof(byte));
+        out.put((const char&)byte);
 
         return status;
     }
@@ -598,7 +598,7 @@ This is the main routine:
         while (!cin.eof())
         {
             unsigned char ch;
-            cin.read((char*)&ch, sizeof(ch));
+            cin.get((char&)ch);
 
             if (cin.eof())
                 return 0;
