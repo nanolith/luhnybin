@@ -292,8 +292,8 @@ and a count of digits encountered.
         void reset();
         EStatus check();
     
-	const char* bytes();
-	size_t size();
+	    const char* bytes();
+    	size_t size();
 
     private:
         ByteBuffer buffer;
