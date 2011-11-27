@@ -1365,6 +1365,8 @@ transition function, and finally closes out each namespace.
                 <<end class>>
             <<end namespace>>
         }
+
+        NEWLINE(source);
     }
     @
 
@@ -1908,11 +1910,11 @@ This macro ends the header guard block.
 
     <<#define END_HEADER_GUARD>>=
     #define END_HEADER_GUARD(file, name, indentation) \
+            *(indentation) -= INDENT; \
             NEWLINE(file); \
             SPACES(file, indentation); \
             fprintf((file), "#endif //%s_HEADER_GUARD", name); \
-            NEWLINE(file); \
-            *(indentation) -= INDENT
+            NEWLINE(file)
     @
 
 This macro adds includes to our source file.
