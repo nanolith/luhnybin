@@ -6,15 +6,9 @@ ALL : .flex-install .bison-install .noweb-install
 	(cd noweb && $(MAKE) install)
 	touch .noweb-install
 
-.noweb-build : .noweb-config
+.noweb-build :
 	(cd noweb && $(MAKE))
 	touch .noweb-build
-
-.noweb-config :
-	touch noweb/Makefile.in
-	touch noweb/configure
-	(cd noweb && ./configure --prefix=$(BUILD_DIR)/noweb)
-	touch .noweb-config
 
 .flex-install : .flex-build
 	(cd flex && $(MAKE) install)
@@ -41,5 +35,5 @@ ALL : .flex-install .bison-install .noweb-install
 .bison-config :
 	touch bison/Makefile.in
 	touch bison/configure
-	(cd bison && ./configure --prefix=$(BUILD_DIR)/bison)
+	(cd bison && export LEX=$(BUILD_DIR)/flex/bin/flex && ./configure --prefix=$(BUILD_DIR)/bison)
 	touch .bison-config
