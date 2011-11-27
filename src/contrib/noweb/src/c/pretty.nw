@@ -59,7 +59,7 @@ Because we want to support either a two-pass or one-pass algorithm,
 we don't say how lines will come in or go out, but we do say that we
 will strip all the trailing newlines.
 <<definitions>>=
-void pretty (char *getline(void *in), void *in,
+void pretty (char *nwgetline(void *in), void *in,
              void  putline(void *out, char *line), void *out,
              PrettyPrinter make_pp(void *cl, char *name), void *cl) 
 {
@@ -67,14 +67,14 @@ void pretty (char *getline(void *in), void *in,
     PrettyPrinter pp;
     Location loc;
 
-    while ((line = getline(in)) != NULL) {
+    while ((line = nwgetline(in)) != NULL) {
 	<<adjust [[loc]] if needed>>
 	<<if not [[@begin code]], copy line and [[continue]]>>
 	putline(out, line);
 
-        for (line = getline(in); 
+        for (line = nwgetline(in); 
              line && !is_keyword(line,"defn") && !is_keyword(line,"text");
-             line = getline(in)
+             line = nwgetline(in)
         ) putline(out, line);
         insist(line,"defn","code chunk had no definition line");
 	putline(out, line);
@@ -82,13 +82,13 @@ void pretty (char *getline(void *in), void *in,
         if (!pp) { <<copy code chunk to [[out]]>>; continue; }
 
         for (; line && !is_keyword(line, "nl") ;) { 
-          line = getline(in); putline(out, line); 
+          line = nwgetline(in); putline(out, line); 
         }
         insist(line,"nl","definition line not followed by newline");
         loc.lineno++;
-	for (line = getline(in); 
+	for (line = nwgetline(in); 
              line != NULL && !is_end(line,"code"); 
-             line = getline(in))
+             line = nwgetline(in))
         {
             <<adjust [[loc]] if needed>>
             if (is_keyword(line,"nl")) {
@@ -112,7 +112,7 @@ if (!is_begin(line, "code")) {
     continue;
 }
 <<copy code chunk to [[out]]>>=
-while ((line = getline(in)) != NULL) {
+while ((line = nwgetline(in)) != NULL) {
     putline(out, line);
     if (is_end(line, "code")) break;
 }
@@ -200,7 +200,7 @@ This means get and put are just I/O.
 <<one-pass definitions>>=
 static char *get_stripped(void *in) {
   FILE *fp = (FILE *)in;
-  char *line = getline(fp);
+  char *line = nwgetline(fp);
   if (line) {
     int i = strlen(line) - 1;
     if (i >= 0 && line[i] == '\n') line[i] = 0;
