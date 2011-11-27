@@ -27,23 +27,23 @@ gen/cxxfilter : gen $(headers) $(sources:.cpp=.o)
 gen :
 	mkdir gen
 
-gen/cxxfilter.cpp : README.md
-	notangle -L -Rcxxfilter.cpp README.md > gen/cxxfilter.cpp
+gen/cxxfilter.cpp : gen/README.md
+	notangle -L -Rcxxfilter.cpp gen/README.md > gen/cxxfilter.cpp
 
-gen/xparse_runtime.cpp : README.md
-	notangle -L -Rxparse_runtime.cpp PARSER.md > gen/xparse_runtime.cpp
+gen/xparse_runtime.cpp : gen/README.md
+	notangle -L -Rxparse_runtime.cpp gen/PARSER.md > gen/xparse_runtime.cpp
 
-gen/xparse_runtime.h : PARSER.md
-	notangle -L -Rxparse_runtime.h PARSER.md > gen/xparse_runtime.h
+gen/xparse_runtime.h : gen/PARSER.md
+	notangle -L -Rxparse_runtime.h gen/PARSER.md > gen/xparse_runtime.h
 
-gen/luhncheck.xparse : README.md
-	notangle -L -Rluhncheck.xparse README.md > gen/luhncheck.xparse
+gen/luhncheck.xparse : gen/README.md
+	notangle -L -Rluhncheck.xparse gen/README.md > gen/luhncheck.xparse
 
 gen/xparse_generated.cpp : $(statemachine)
 gen/xparse_generated.h : $(statemachine)
 
-$(statemachine) : README.md $(compiler)
-	notangle -Rluhncheck.xparse README.md > gen/luhncheck.xparse
+$(statemachine) : gen/README.md $(compiler)
+	notangle -Rluhncheck.xparse gen/README.md > gen/luhncheck.xparse
 	(cd gen && cat luhncheck.xparse | ./xparse )
 
 gen/y.tab.c : gen/xparse.y
@@ -52,16 +52,19 @@ gen/y.tab.c : gen/xparse.y
 gen/lex.yy.c : gen/xparse.l
 	(cd gen && $(LEX) xparse.l)
 
-gen/xparse.y : PARSER.md gen/xparse.h
-	notangle -Rxparse.y PARSER.md > gen/xparse.y
+gen/xparse.y : gen/PARSER.md gen/xparse.h
+	notangle -Rxparse.y gen/PARSER.md > gen/xparse.y
 
-gen/xparse.l : PARSER.md
-	notangle -Rxparse.l PARSER.md > gen/xparse.l.in
+gen/xparse.l : gen/PARSER.md
+	notangle -Rxparse.l gen/PARSER.md > gen/xparse.l.in
 	cat gen/xparse.l.in | sed 's/^    //g' > gen/xparse.l
 
-gen/xparse.h : PARSER.md
-	notangle -L -Rxparse.h PARSER.md > gen/xparse.h
+gen/xparse.h : gen/PARSER.md
+	notangle -L -Rxparse.h gen/PARSER.md > gen/xparse.h
 
-gen/xparse.c : PARSER.md
-	notangle -L -Rxparse.c PARSER.md > gen/xparse.c
+gen/xparse.c : gen/PARSER.md
+	notangle -L -Rxparse.c gen/PARSER.md > gen/xparse.c
+
+gen/%.md : %.md
+	cat $*.md | sed 's/^    \(<<[^>]*>>=\)/\1/g' | sed 's/^    \(@\)/\1/g' > gen/$*.md
 
