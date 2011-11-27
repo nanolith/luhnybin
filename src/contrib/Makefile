@@ -1,13 +1,13 @@
 .PHONY: ALL
 
-ALL : .flex-install .bison-install .noweb-install
+ALL : .flex-install .bison-install .noweb-build
 
 .noweb-install : .noweb-build
 	(cd noweb && $(MAKE) install)
 	touch .noweb-install
 
 .noweb-build :
-	(cd noweb && $(MAKE))
+	(cd noweb/src && $(MAKE))
 	touch .noweb-build
 
 .flex-install : .flex-build
@@ -29,6 +29,8 @@ ALL : .flex-install .bison-install .noweb-install
 	touch .bison-install
 
 .bison-build : .bison-config
+	touch bison/Makefile.in
+	touch bison/configure
 	(cd bison && $(MAKE))
 	touch .bison-build
 
