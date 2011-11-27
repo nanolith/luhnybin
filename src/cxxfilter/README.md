@@ -38,8 +38,7 @@ code base with woefully outdated documentation, this has to be a better
 solution.  Well, if you can bear my long-windedness.  :-)
 
 I still have not figured out how to incorporate test-driven development into the
-prose of literate programming.  My tests are in a companion document, [Testing
-the Luhn Check Algorinthm][test_document].
+prose of literate programming.  My tests are in a companion document.
 
 Building
 --------
