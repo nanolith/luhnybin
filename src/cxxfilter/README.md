@@ -122,12 +122,12 @@ The state machine is shown below.
     }
 
     transition ignore {
-        using class transition::Ignore
+        using class transition.Ignore
         state->initial
     }
 
     transition luhnGather {
-        using class transition::LuhnGather
+        using class transition.LuhnGather
         state->luhn
     }
 
@@ -138,17 +138,17 @@ The state machine is shown below.
     }
 
     transition luhnAppendDigit {
-        using class transition::LuhnAppendDigit
+        using class transition.LuhnAppendDigit
         state->luhn
     }
 
-    transition luhnAppendNonDigits {
-        using class transition::LuhnAppendNonDigit
+    transition luhnAppendNonDigit {
+        using class transition.LuhnAppendNonDigit
         state->luhn
     }
 
     transition luhnCheck {
-        using class transition::LuhnCheck
+        using class transition.LuhnCheck
         state->initial
     }
 @
@@ -187,6 +187,7 @@ replacing Luhn sequences.  Here is the skeleton of our source file.
 
 <<cxxfilter.cpp>>=
     #include <xparse_runtime.h>
+    #include <xparse_generated.h>
 
     <<struct LuhnState;>>
 
@@ -195,6 +196,8 @@ replacing Luhn sequences.  Here is the skeleton of our source file.
     <<transition::LuhnAppendDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>
     <<transition::LuhnAppendNonDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>
     <<transition::LuhnCheck::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>
+
+    <<int main(int argc, char* argv[]);>>
 @
 
 Our base case, in which we just write non-Luhn bytes to the output stream, is by
@@ -203,7 +206,7 @@ far the easiest.
 <<transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
-        out.write(&byte, sizeof(byte);
+        out.write((const char*)&byte, sizeof(byte));
 
         return E_SUCCESS;
     }
@@ -268,7 +271,7 @@ responsibility to call the calvary or do whatever else must be done.
         //write the buffered, possibly scrubbed, sequence
         out.write(luhn.bytes(), luhn.size());
         //write the sequence breaking byte
-        out.write(&byte, sizeof(byte));
+        out.write((const char*)&byte, sizeof(byte));
 
         return status;
     }
@@ -281,6 +284,8 @@ and a count of digits encountered.
 <<struct LuhnState;>>=
     struct LuhnState : public ApplicationState
     {
+        <<LuhnState public typedefs>>
+
         LuhnState();
 
         void appendDigit(unsigned char digit);
@@ -288,14 +293,15 @@ and a count of digits encountered.
         void reset();
         EStatus check();
     
-    private:
-        <<LuhnState private typedefs>>
+	const char* bytes();
+	size_t size();
 
+    private:
         ByteBuffer buffer;
         size_t count;
 
-        void findLuhnSequnce(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);
-        void scrubLuhnDigits(IteratorPairsList::iterator begin, IteratorPairsList::iterator end);
+        void findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);
+        void scrubLuhnDigits(iterator begin, iterator end);
         reverse_iterator first_digit(reverse_iterator begin, reverse_iterator end);
     };
 
@@ -304,16 +310,18 @@ and a count of digits encountered.
     <<void LuhnState::appendNonDigit(unsigned char byte);>>
     <<void LuhnState::reset();>>
     <<EStatus LuhnState::check();>>
-    <<void LuhnState::findLuhnSequnce(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);>>
+    <<void LuhnState::findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);>>
     <<void LuhnState::scrubLuhnDigits(iterator begin, iterator end);>>
-    <<reverse_iterator first_digit(reverse_iterator begin, reverse_iterator end);>>
+    <<reverse_iterator LuhnState::first_digit(reverse_iterator begin, reverse_iterator end);>>
+    <<const char* LuhnState::bytes();>>
+    <<size_t LuhnState::size();>>
 @
 
 In this state class, we have a few typedefs to make life easier.  This includes
 the buffer type in which we will be staging bytes, and some containers we will
 be using for Luhn checking.  They are defined here.
 
-<<LuhnState private typedefs>>=
+<<LuhnState public typedefs>>=
     typedef
     std::vector<unsigned char>
     ByteBuffer;
@@ -410,7 +418,7 @@ beginning and end of a Luhn sequence.  We use a reverse iterator to go through
 the buffer from right to left, adding matching Luhn sequences to this list.
 
 <<build luhn sequence list>>=
-    list<IteratorPairs> luhnList;
+    IteratorPairsList luhnList;
 
     ByteBuffer::reverse_iterator rend = buffer.rend();
     for (ByteBuffer::reverse_iterator i = buffer.rbegin();
@@ -442,12 +450,12 @@ second and first when appending to the list.  We do this because we want to
 convert from reverse iterators to iterators.  This logic turns second into the
 beginning of the sequence, and first into the exclusive end of the sequence.
 
-<<void LuhnState::findLuhnSequnce(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);>>=
-    void LuhnState::findLuhnSequnce(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList)
+<<void LuhnState::findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);>>=
+    void LuhnState::findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList)
     {
         <<set initial state>>
 
-        for (i = first; i != rend && digits <= MAXIMUM_LUHN; i = first_digit(++i, rend))
+        for (i = first; i != rend && digits < MAXIMUM_LUHN; i = first_digit(++i, rend))
         {
             <<luhn sum>>
             <<check sequence>>
@@ -455,7 +463,7 @@ beginning of the sequence, and first into the exclusive end of the sequence.
 
         if (resultFound)
         {
-            luhnList.push_back(make_pair(second, first-1));
+            luhnList.push_back(make_pair((second+1).base(), first.base()));
         }
     }
 @
@@ -465,8 +473,8 @@ the sequence, or rend if no digits are found.  Our number of digits is 0, parity
 is set to false, resultFound is set to false, and sum is set to 0.
 
 <<set initial state>>=
-    ByteBuffer::iterator first = first_digit(i, rend);
-    ByteBuffer::iterator second;
+    reverse_iterator first = first_digit(i, rend);
+    reverse_iterator second;
     int digits = 0;
     bool parity = false;
     bool resultFound = false;
@@ -480,11 +488,15 @@ parity bit for the next run.
 
 <<luhn sum>>=
     int val = *i - '0';
-    sum +=
-        parity ? val*2
-        : val;
+    if (parity) val <<= 1;
+
+    if (val >= 10)
+        val = val%10 + val/10;
+
+    sum += val;
+
     ++digits;
-    parity^=parity;
+    parity^=true;
 @
 
 Our loop terminates when either the end of the buffer is encountered, or when we
@@ -515,8 +527,8 @@ iterators, will return either an iterator to the first digit, or the end of the
 sequence if a digit is not found.  This function allows us to skip non-digits in
 a sequence efficiently.
 
-<<reverse_iterator first_digit(reverse_iterator begin, reverse_iterator end);>>=
-    reverse_iterator first_digit(reverse_iterator begin, reverse_iterator end)
+<<reverse_iterator LuhnState::first_digit(reverse_iterator begin, reverse_iterator end);>>=
+    LuhnState::reverse_iterator LuhnState::first_digit(LuhnState::reverse_iterator begin, LuhnState::reverse_iterator end)
     {
         for (; begin != end; ++begin)
         {
@@ -539,13 +551,66 @@ encounter a digit, change it to our scrub byte.
     {
         for (; begin != end; ++begin)
         {
-            if (isdigit(begin))
+            if (isdigit(*begin))
                 *begin = SCRUB_BYTE;
         }
     }
 @
 
-This concludes our Luhn checking logic.
+This concludes our Luhn checking logic.  There are two final functions needed
+for LuhnState.  The first returns a pointer to the buffer for use by
+ostream::write.  Since STL vector stores data in contiguous memory, this
+operation works.  It is actually mentioned in the C++ standard as safe.
+
+<<const char* LuhnState::bytes();>>=
+    const char* LuhnState::bytes()
+    {
+        return (const char*)&buffer[0];
+    }
+@
+
+The second function returns the current size of the buffer.
+
+<<size_t LuhnState::size();>>=
+    size_t LuhnState::size()
+    {
+        return buffer.size();
+    }
+@
+
+cxxfilter application
+---------------------
+
+The cxxfilter application copies standard input to standard output, using the
+filtering logic that we have built here.  First, it calls the generated
+function, initializeApplicationState, which sets up our state machine.  Then, it
+loops on standard input, reading characters and passing these to our filter.
+This is the main routine:
+
+<<int main(int argc, char* argv[]);>>=
+    using namespace std;
+
+    int main(int argc, char* argv[])
+    {
+        LuhnState applicationState;
+
+        initializeApplicationState(applicationState);
+
+        while (!cin.eof())
+        {
+            unsigned char ch;
+            cin.read((char*)&ch, sizeof(ch));
+
+            if (cin.eof())
+                return 0;
+
+            if (E_LUHN == filterByte(ch, applicationState, cout))
+            {
+                //TODO: call the calvary
+            }
+        }
+    }
+@
 
 [noweb_website]: http://www.cs.tufts.edu/~nr/noweb/ "Noweb home page"
 [markdown_wiki]: http://en.wikipedia.org/wiki/Markdown "Markdown"

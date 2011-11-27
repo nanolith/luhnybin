@@ -19,20 +19,23 @@ will transform the source file into a list of tokens.
 
     %{
     #include <stdio.h>
-    #include "y.tab.h"
+    #include <string.h>
+    #include <xparse.h>
+    #include <y.tab.h>
     %}
     %%
-    [\[][^\]]+[\]]        <<return MATCH>>
-    state                   return STATE 
-    transition              return TRANSITION
-    using                   return USING
-    class                   return CLASS
-    ->                      return ARROW
-    :default:               return DEFAULT_CHAR_CLASS
-    {                       return OPEN_CURLY_BRACE
-    }                       return CLOSE_CURLY_BRACE
-    [A-Za-z][a-zA-Z0-9]+  <<return IDENTIFIER>>
-    ::                      return PACKAGE_SEPARATOR_OPT
+    \[[^\]]+\]              <<return MATCH>>
+    state                     return STATE;
+    transition                return TRANSITION;
+    using                     return USING;
+    class                     return CLASS;
+    \->                       return ARROW;
+    \:default\:               return DEFAULT_CHAR_CLASS;
+    \{                        return OPEN_CURLY_BRACE;
+    \}                        return CLOSE_CURLY_BRACE;
+    [A-Za-z][a-zA-Z0-9\.]*  <<return IDENTIFIER>>
+    \:\:                      return PACKAGE_SEPARATOR_OPT;
+    %%
 @
 
 Our DSL has eleven different types of tokens.  From these tokens, we can
@@ -41,8 +44,8 @@ describe a parser in Yacc.
 <<xparse.y>>=
 
     <<yacc header>>
-    <<tokens>>
     <<parse structure>>
+    <<tokens>>
     <<types>>
     %%
 
@@ -240,7 +243,7 @@ encountered.  Here, we just save the state name for the next callback.
 <<set state>>=
 
     {
-        $$ = identifier($3);
+        $$ = createSetState($3);
     }
 @
 
@@ -259,8 +262,7 @@ scanner to our name, which is done by extending the lexer's return token as
 such:
 
 <<return IDENTIFIER>>=
-
-    { yyval.name = strdup(*yytext); return IDENTIFIER; }
+    { yylval.name = strdup(yytext); return IDENTIFIER; }
 @
 
 Here, we copy the text value into our name, and return the appropriate token to
@@ -341,7 +343,7 @@ a transition statement.
 
 <<build transition statement>>=
 
-    { $$ = createTransitionStatement($3) }
+    { $$ = createTransitionStatement($3); }
 @
 
 Next, we must consider how to handle match statements.  A match statement is a
@@ -353,7 +355,7 @@ First, for the default character class:
 
 <<handle default char class>>=
 
-    { $$ = createDefaultMatchClause(); }
+    { $$ = createDefaultMatchClass(); }
 @
 
 To handle the regular match char class, we must first define how to interpret
@@ -361,8 +363,7 @@ the match token in our lexical scanner.  In this case, we will interpret it as
 a string, just like the identifier.  We will re-use the name variable here.
 
 <<return MATCH>>=
-
-    { yyval.name = strdup(*yytext); return MATCH; }
+    { yylval.name = strdup(yytext); return MATCH; }
 @
 
 Additionally, we will let Yacc know that a MATCH token is stored in name, so
@@ -377,7 +378,7 @@ Now, the reduction becomes a very simple statement in Yacc.
 
 <<handle match chars>>=
 
-    { $$ = createMatchChars($1) }
+    { $$ = createMatchChars($1); }
 @
 
 With a match statement and a state transition, we can now consider the whole
@@ -501,11 +502,21 @@ First, we'll define the header which contains our parse functions.
     #ifndef  XPARSE_H_HEADER_GUARD
     #define  XPARSE_H_HEADER_GUARD
 
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <string.h>
+        #include <assert.h>
+        #include <ctype.h>
+
+        <<code generation macros>>
+
         <<struct XTransition>>
         <<struct XMatchChars>>
         <<struct XState>>
 
-        void parseTree();
+        <<struct XParseTree>>
+
+        void parseTreeFunc();
         void addStateDeclarationToParseTree(XState* state);
         void addTransitionDeclarationToParseTree(XTransition* transition);
 
@@ -517,7 +528,7 @@ First, we'll define the header which contains our parse functions.
         char* createMatchChars(char* match_chars);
         char* createDefaultMatchClass();
 
-        XTransition* createTransition(char* name, XTransition* transitionStatements);
+        XTransition* createTransition(char* name, XTransition* transition);
         XTransition* createTransitionStruct();
         XTransition* createUsingClass(XTransition* transition, char* usingClassDecl);
         XTransition* createStateAssignment(XTransition* transition, char* stateAssignment);
@@ -578,7 +589,7 @@ handle this.  Now, we can add this state assignment to our transition structure.
     XTransition* createStateAssignment(XTransition* transition, char* stateAssignment)
     {
         assert(transition != NULL);
-        assignment->state = stateAssignment;
+        transition->state = stateAssignment;
 
         return transition;
     }
@@ -595,7 +606,7 @@ using class case.
     XTransition* createUsingClass(XTransition* transition, char* usingClassDecl)
     {
         assert(transition != NULL);
-        assignment->usingClass = usingClassDecl;
+        transition->usingClass = usingClassDecl;
 
         return transition;
     }
@@ -618,11 +629,11 @@ Finally, we will give our transition block a name via the createTransition
 function.  After this point, the transition block is complete and can be turned
 into C++ code.
 
-<<XTransition* createTransition(char* name, XTransition* transitionStatements);>>=
+<<XTransition* createTransition(char* name, XTransition* transition);>>=
 
-    XTransition* createTransition(char* name, XTransition* transitionStatements)
+    XTransition* createTransition(char* name, XTransition* transition)
     {
-        assert(transition != null);
+        assert(transition != NULL);
         transition->name = name;
 
         return transition;
@@ -654,9 +665,9 @@ destructors, but _c'est la vie_.
 
     void freeXTransition(XTransition* transition)
     {
-        free(name);
-        free(usingClass);
-        free(state);
+        free(transition->name);
+        free(transition->usingClass);
+        free(transition->state);
 
         free(transition);
     }
@@ -774,7 +785,7 @@ operation has been elided so we can treat it in depth below.
         {
             match->type = E_MATCH_CHARS;
             match->characters =
-                transformMatchStatement(matchStmt, &match->characterSize);
+                transformMatchStatement(matchStmt, &match->charactersSize);
         }
 
         match->transitionName = stateTransition;
@@ -899,7 +910,7 @@ appended to our array.
 <<handle base case>>=
 
     default:
-        matchCharacters[*size] = 0;
+        matchCharacters[*size] = *matchStmt;
         ++(*size);
         ++matchStmt;
         break;
@@ -926,9 +937,8 @@ Our initial XState array must be built as well as part of left recursion.
 
     XState* createEmptyStateStatements()
     {
-        assert(state != null);
         XState* state = (XState*)malloc(sizeof(XState));
-        memcpy(state, 0, sizeof(XState));
+        memset(state, 0, sizeof(XState));
 
         return state;
     }
@@ -941,7 +951,7 @@ completes the state block.
 
     XState* updateStateStatementsWithName(char* name, XState* state)
     {
-        assert(state != null);
+        assert(state != NULL);
         state->name = name;
 
         return state;
@@ -981,7 +991,7 @@ parsing.
     void freeXState(XState* state)
     {
         free(state->name);
-        for (int i = 0; i < name->numMatchChars; ++i)
+        for (int i = 0; i < state->numMatchChars; ++i)
         {
             free(state->matchChars[i]);
         }
@@ -1000,16 +1010,18 @@ transition blocks, its structure is pretty simple.
 
 <<struct XParseTree>>=
 
-    #define MAX_STATES 256;
-    #define MAX_TRANSITIONS 512;
+    #define MAX_STATES 256
+    #define MAX_TRANSITIONS 512
 
-    struct struct_XParseTree
+    typedef struct struct_XParseTree
     {
         XState* states[MAX_STATES];
         size_t numStates;
         XTransition* transitions[MAX_TRANSITIONS];
         size_t numTransitions;
-    } parseTree;
+    } ParseTree;
+
+    extern ParseTree parseTree;
 @
 
 There's really no need for a typedef since there will only ever be one parse
@@ -1026,7 +1038,7 @@ someone else.
 
         if (yyparse() == 0)
         {
-            parseTree();
+            parseTreeFunc();
         }
         else
         {
@@ -1041,7 +1053,7 @@ Now that our parse tree is initialized, let's add our transition data to it.
 
     void addTransitionDeclarationToParseTree(XTransition* transition)
     {
-        assert(parse.numTransitions < MAX_TRANSITIONS);
+        assert(parseTree.numTransitions < MAX_TRANSITIONS);
         parseTree.transitions[parseTree.numTransitions] = transition;
         ++parseTree.numTransitions;
     }
@@ -1053,8 +1065,8 @@ Adding our state data is just as easy.
 
     void addStateDeclarationToParseTree(XState* state)
     {
-        assert(parse.numStates < MAX_STATES);
-        parseTree.states[parseTree.numStates] = states;
+        assert(parseTree.numStates < MAX_STATES);
+        parseTree.states[parseTree.numStates] = state;
         ++parseTree.numStates;
     }
 @
@@ -1102,10 +1114,11 @@ one for the source file.  It will pass these, along with an indentation pointer,
 to each function it calls.
 
 
-<<void parseTree();>>=
+<<void parseTreeFunc();>>=
 
-    #define HEADER_FILE_NAME "xparse-generated.h"
-    #define SOURCE_FILE_NAME "xparse-generated.cpp"
+    #define HEADER_FILE_NAME "xparse_generated.h"
+    #define HEADER_MACRO_NAME "XPARSE_GENERATED_H"
+    #define SOURCE_FILE_NAME "xparse_generated.cpp"
 
     <<generateFileProlog(header, source, &headerIndentation, &sourceIndentation);>>
     <<generateStateForwardDecls(header, source, &headerIndentation, &sourceIndentation);>>
@@ -1114,7 +1127,7 @@ to each function it calls.
     <<generateInitializationFunction(header, source, &headerIndentation, &sourceIndentation);>>
     <<generateFileEpilog(header, source, &headerIndentation, &sourceIndentation);>>
 
-    void parseTree()
+    void parseTreeFunc()
     {
         FILE* header = fopen(HEADER_FILE_NAME, "w");
         FILE* source = fopen(SOURCE_FILE_NAME, "w");
@@ -1131,7 +1144,7 @@ to each function it calls.
         generateStateForwardDecls(header, source, &headerIndentation, &sourceIndentation);
         generateTransitionForwardDecls(header, source, &headerIndentation, &sourceIndentation);
         generateStateArrays(header, source, &headerIndentation, &sourceIndentation);
-        generateInitializationFunction(header, sourec, &headerIndentation, &sourceIndentation);
+        generateInitializationFunction(header, source, &headerIndentation, &sourceIndentation);
         generateFileEpilog(header, source, &headerIndentation, &sourceIndentation);
 
         fclose(header);
@@ -1143,11 +1156,10 @@ Now, we will generate the prologues for each file.  In the header file, we will
 initiate the header guard and include our runtime header.  In the source file,
 we will include our header file and some basic C++ headers.
 
-
 <<generateFileProlog(header, source, &headerIndentation, &sourceIndentation);>>=
     void generateFileProlog(FILE* header, FILE* source, size_t* headerIndentation, size_t* sourceIndentation)
     {
-        BEGIN_HEADER_GUARD(header, HEADER_FILE_NAME, headerIndentation);
+        BEGIN_HEADER_GUARD(header, HEADER_MACRO_NAME, headerIndentation);
         ADD_INCLUDES(source, HEADER_FILE_NAME, sourceIndentation);
     }
 @
@@ -1184,14 +1196,14 @@ twice.  Once to tokenize and count, and once to generate namespaces.  It makes
 sense to think of the split string as an object.  So... Stand back... I'm going
 to write object-oriented C.
 
-<<int buildNamespacesFromQualifiedName(FILE* file, char* qualifiedName, int* indentation);>>=
+<<int buildNamespacesFromQualifiedName(FILE* file, char* qualifiedName, size_t* indentation);>>=
     <<struct SplitString;>>
     <<SplitString* createSplitString(char* string, char* delimiters);>>
     <<size_t SplitString_size(SplitString* ss);>>
     <<char* SplitString_get(SplitString* ss, size_t offset);>>
     <<void freeSplitString(SplitString* ss);>>
 
-    int buildNamespacesFromQualifiedName(FILE* file, SplitString* qualifiedName, int* indentation)
+    int buildNamespacesFromQualifiedName(FILE* file, SplitString* qualifiedName, size_t* indentation)
     {
         int namespaceCount = SplitString_size(qualifiedName) - 1;
 
@@ -1293,15 +1305,41 @@ BLOCK macro will fix up indentation and emit and ending curly brace, but since
 this macro will be reused to end structures that might have instances, it does
 not emit a newline.  Hence, we use the NEWLINE macro to close out the line.
 
-<<void endBlocks(FILE* file, int numBlocks, int* indentation);>>=
-    void endBlocks(int numBlocks, FILE* file, int* indentation)
+<<void endBlocks(FILE* file, int numBlocks, size_t* indentation);>>=
+    void endBlocks(int numBlocks, FILE* file, size_t* indentation)
     {
         for (int i = 0; i < numBlocks; ++i)
         {
             END_BLOCK(file, indentation);
             NEWLINE(file);
         }
+
+        NEWLINE(file);
     }
+@
+
+We also need a way to create a qualified class name from a qualified name.  This
+function builds this class name from the qualified name array.  It's up to the
+caller to free this buffer.  For simplicity sake, we will assume that no one
+will create a 2k name.  TODO: make this arbitrary length.
+
+<<char* createClassName(SplitString* qualifiedName);>>=
+    char* createClassName(SplitString* qualifiedName)
+    {
+        char* className = (char*)malloc(2048*sizeof(char));
+        memset(className, 0, 2048);
+
+        for (int i = 0; i < SplitString_size(qualifiedName); ++i)
+        {
+            if (i > 0)
+                strcat(className, "::");
+
+            strcat(className, SplitString_get(qualifiedName, i));
+        }
+
+        return className;
+    }
+
 @
 
 Having built these two utility functions, and the SplitString utility "class",
@@ -1312,10 +1350,11 @@ transition function, and finally closes out each namespace.
 
 <<generateTransitionForwardDecls(header, source, &headerIndentation, &sourceIndentation);>>=
 
-    <<int buildNamespacesFromQualifiedName(FILE* file, char* qualifiedName, int* indentation);>>
-    <<void endBlocks(FILE* file, int numBlocks, int* indentation);>>
+    <<int buildNamespacesFromQualifiedName(FILE* file, char* qualifiedName, size_t* indentation);>>
+    <<void endBlocks(FILE* file, int numBlocks, size_t* indentation);>>
+    <<char* createClassName(SplitString* qualifiedName);>>
 
-    void generateTransitionForwardDecls(FILE* header, FILE* source, int* headerIndentation, int* sourceIndentation)
+    void generateTransitionForwardDecls(FILE* header, FILE* source, size_t* headerIndentation, size_t* sourceIndentation)
     {
         for (size_t i = 0; i < parseTree.numTransitions; ++i)
         {
@@ -1333,8 +1372,9 @@ To begin a namespace, we call the namespace function we defined above after
 doing some basic data massaging to build the parameters we need.
 
 <<begin namespace>>=
-    SplitString* qualifiedName = createSplitString(parseTree.transitions[i]->usingClass;
+    SplitString* qualifiedName = createSplitString(parseTree.transitions[i]->usingClass, ".");
     char* className = SplitString_get(qualifiedName, SplitString_size(qualifiedName) - 1);
+    char* qualifiedClassName = createClassName(qualifiedName);
     char* transitionName = parseTree.transitions[i]->name;
     char* nextState = parseTree.transitions[i]->state;
 
@@ -1376,12 +1416,17 @@ done while transitioning from state to state.  More on this later.
     EMIT_TRANSITION_FUNCTION_ON_TRANSITION(header, headerIndentation);
 @
 
-Finally, we end the class.
+Finally, we end the class, and create an instance of this class in the source
+file.
 
 <<end class>>=
             END_PUBLIC_SECTION(header, headerIndentation);
         END_BLOCK(header, headerIndentation);
-    END_CLASS_WITH_INSTANCE(transitionName, header, headerIndentation);
+    END_CLASS(header, headerIndentation);
+
+    INSTANCE(qualifiedClassName, transitionName, source, sourceIndentation);
+    END_STATEMENT(source, sourceIndentation);
+    NEWLINE(source);
 @
 
 Then, we end the namespace.
@@ -1402,17 +1447,17 @@ will declare each one extern; the implementations will be placed in the source
 file later.
 
 <<generateStateForwardDecls(header, source, &headerIndentation, &sourceIndentation);>>=
-    void generateStateForwardDecls(FILE* header, FILE* source, int* headerIndentation, int* sourceIndentation)
+    void generateStateForwardDecls(FILE* header, FILE* source, size_t* headerIndentation, size_t* sourceIndentation)
     {
         for (size_t i = 0; i < parseTree.numStates; ++i)
         {
             EXTERN(header, headerIndentation);
                 INSTANCE(STATE_TYPE, parseTree.states[i]->name, header, headerIndentation);
                 END_STATEMENT(header, headerIndentation);
-                NEWLINE(header, headerIndentation);
+                NEWLINE(header);
 
             //add a newline in between to enhance readability
-            NEWLINE(header, headerIndentation);
+            NEWLINE(header);
         }
     }
 @
@@ -1431,8 +1476,8 @@ Here, we can see the hex representation of the byte, the decimal
 representation, and the printable glyph if applicable.  The function to generate
 this comment is here:
 
-<<void generateTransitionComment(unsigned char ch, FILE* file, int* indentation);>>=
-    void generateTransitionComment(unsigned char ch, FILE* file, int* indentation)
+<<void generateTransitionComment(unsigned char ch, FILE* file, size_t* indentation);>>=
+    void generateTransitionComment(unsigned char ch, FILE* file, size_t* indentation)
     {
         BEGIN_COMMENT(file, indentation);
             HEX_VALUE(ch, file, indentation);
@@ -1440,7 +1485,7 @@ this comment is here:
             if (isprint(ch) && !(ch & 0x80))
                 PRINT_VALUE(ch, file, indentation);
         END_COMMENT(file, indentation);
-        NEWLINE(file, indentation);
+        NEWLINE(file);
     }
 @
 
@@ -1457,7 +1502,7 @@ populate the remaining members of the array with the default character class.
     {
         char** array = (char**)malloc(256*sizeof(char*));
         memset(array, 0, 256*sizeof(char*));
-        MatchChars* defaultMatch = NULL;
+        XMatchChars* defaultMatch = NULL;
 
         <<match chars loop>>
         <<default chars loop>>
@@ -1479,7 +1524,7 @@ twice, we report an error.
         {
             if (defaultMatch)
             {
-                fprintf(stdout, "Error, :default: defined multiple times for %s\n", state->name);
+                fprintf(stderr, "Error, :default: defined multiple times for %s\n", state->name);
                 exit(1);
             }
 
@@ -1491,8 +1536,8 @@ twice, we report an error.
         {
             if (array[match->characters[j]])
             {
-                sprintf(stderr, "Error in %s: Character %c already defined for transition %s\n",
-                        array[match->characters[j]], match->characters[j], match->transitionName);
+                fprintf(stderr, "Error in %s: Character '%c' (%d) already defined for transition %s\n",
+                        array[match->characters[j]], match->characters[j], match->characters[j], match->transitionName);
                 exit(1);
             }
 
@@ -1507,15 +1552,15 @@ entries with the default character class.  This will complete the array.
 <<default chars loop>>=
     if (!defaultMatch)
     {
-        fprintf("Error: missing :default: clause in state %s\n", state->name);
+        fprintf(stderr, "Error: missing :default: clause in state %s\n", state->name);
         exit(1);
     }
 
     for (int i = 0; i < 256; ++i)
     {
-        if (!arrays[i])
+        if (!array[i])
         {
-            arrays[i] = defaultMatch->transitionName;
+            array[i] = defaultMatch->transitionName;
         }
     }
 @
@@ -1526,10 +1571,10 @@ the array.  Also, we'll add comments to make the entries readable.
 
 <<generateStateArrays(header, source, &headerIndentation, &sourceIndentation);>>=
 
-    <<void generateTransitionComment(unsigned char ch, FILE* file, int* indentation);>>
+    <<void generateTransitionComment(unsigned char ch, FILE* file, size_t* indentation);>>
     <<char** buildCharacterArray(XState* state);>>
 
-    void generateStateArrays(FILE* header, FILE* source, int* headerIndentation, int* sourceIndentation)
+    void generateStateArrays(FILE* header, FILE* source, size_t* headerIndentation, size_t* sourceIndentation)
     {
         for (int i = 0; i < parseTree.numStates; ++i)
         {
@@ -1548,8 +1593,8 @@ the array.  Also, we'll add comments to make the entries readable.
             END_BLOCK(source, sourceIndentation);
             END_STATEMENT(source, sourceIndentation);
 
-            NEWLINE(source, sourceIndentation);
-            NEWLINE(source, sourceIndentation);
+            NEWLINE(source);
+            NEWLINE(source);
         }
     }
 @
@@ -1560,7 +1605,7 @@ This will take an application state object, and set its state to our initial
 state.
 
 <<generateInitializationFunction(header, source, &headerIndentation, &sourceIndentation);>>=
-    void generateInitializationFunction(FILE* header, FILE* source, int* headerIndentation, int* sourceIndentation)
+    void generateInitializationFunction(FILE* header, FILE* source, size_t* headerIndentation, size_t* sourceIndentation)
     {
         char statement[1024];
         if (parseTree.numStates < 1)
@@ -1571,16 +1616,16 @@ state.
         char* initialState = parseTree.states[0]->name;
 
         FUNCTION_DECL(INIT_FUNCTION, "void", "ApplicationState& state", header, headerIndentation);
-        NEWLINE(header, headerIndentation);
+        NEWLINE(header);
 
         FUNCTION(INIT_FUNCTION, "void", "ApplicationState& state", source, sourceIndentation);
-        NEWLINE(source, sourceIndentation);
+        NEWLINE(source);
         BEGIN_BLOCK(source, sourceIndentation);
         sprintf(statement, "state.state = &%s;", initialState);
         EMIT_STATEMENT(statement, source, sourceIndentation);
         END_BLOCK(source, sourceIndentation);
-        NEWLINE(source, sourceIndentation);
-        NEWLINE(source, sourceIndentation);
+        NEWLINE(source);
+        NEWLINE(source);
     }
 @
 
@@ -1610,14 +1655,19 @@ later on to handle arbitrary sensitive data, takes about two lines of code in
 this function.  We will see a similar pattern when we examine the rest of the
 runtime.
 
+Our state type is the TransitionArray, which is described here.  Each state
+array will be an instance of this type.
+
+<<typedef TransitionArray;>>=
+    typedef
+    Transition* TransitionArray[256];
+@
+
 This function uses an ApplicationState object.  This is an object that can be
 overridden by the user to store additional application state, such as the luhn
 check buffers.  It is described here.
 
 <<struct ApplicationState;>>=
-    typedef
-    Transition TransitionArray[256];
-
     struct ApplicationState
     {
         TransitionArray* state;
@@ -1644,6 +1694,9 @@ streams.
 
     protected:
         virtual EStatus onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const = 0;
+
+    private:
+        TransitionArray* state_;
     };
 @
 
@@ -1679,18 +1732,23 @@ covered in the documentation up top.
 
     %{
         #include <stdio.h>
+        #include <stdlib.h>
         #include <string.h>
+        #include <assert.h>
         #include "xparse.h"
 
         void yyerror(const char *str)
         {
-            fprintf(stderr,"error: %s\n",str);
+            fprintf(stderr, "error: %s\n",str);
         }
 
         int yywrap()
         {
             return 1;
         } 
+
+        int yyparse();
+        int yylex();
 
         <<int main(int argc, char* argv[])>>
     %}
@@ -1704,10 +1762,11 @@ xparse.c definition
 
     #include "xparse.h"
 
-    <<code generation macros>>
-    <<struct XParseTree>>
+    ParseTree parseTree;
 
-    <<void parseTree();>>
+    void yyerror(const char *str);
+
+    <<void parseTreeFunc();>>
     <<void addStateDeclarationToParseTree(XState* state);>>
     <<void addTransitionDeclarationToParseTree(XTransition* transition);>>
 
@@ -1719,7 +1778,7 @@ xparse.c definition
     <<char* createMatchChars(char* match_chars);>>
     <<char* createDefaultMatchClass();>>
 
-    <<XTransition* createTransition(char* name, XTransition* transitionStatements);>>
+    <<XTransition* createTransition(char* name, XTransition* transition);>>
     <<XTransition* createTransitionStruct();>>
     <<XTransition* createUsingClass(XTransition* transition, char* usingClassDecl);>>
     <<XTransition* createStateAssignment(XTransition* transition, char* stateAssignment);>>
@@ -1730,10 +1789,59 @@ xparse.c definition
     <<void freeXState(XState* state);>>
 @
 
+XParse runtime files
+--------------------
+
+<<xparse_runtime.h>>=
+    #ifndef  XPARSE_RUNTIME_H_HEADER_GUARD
+    # define XPARSE_RUNTIME_H_HEADER_GUARD
+
+    #include <iostream>
+    #include <memory>
+    #include <list>
+    #include <vector>
+
+    enum EStatus
+    {
+        E_SUCCESS,
+        E_LUHN,
+    };
+
+    extern "C++" {
+        class Transition;
+        struct ApplicationState;
+    }
+
+    <<typedef TransitionArray;>>
+
+    <<class Transition;>>
+
+    <<struct ApplicationState;>>
+
+    EStatus filterByte(unsigned char byte, ApplicationState& state, std::ostream& out);
+
+    #endif //XPARSE_RUNTIME_H_HEADER_GUARD
+@
+
+<<xparse_runtime.cpp>>=
+    #include <xparse_runtime.h>
+    #include <xparse_generated.h>
+
+    <<Transition::transition(unsigned char byte, ApplicationState& state, std::ostream& out);>>
+    <<filterByte(unsigned char byte, ApplicationState& state, std::ostream& out);>>
+@
+
 Code generation constants and macros
 ------------------------------------
 
 <<code generation macros>>=
+    #define INDENT 4
+    #define STATE_TYPE "TransitionArray"
+    #define CLASS_TRANSITION "Transition"
+    #define INIT_FUNCTION "initializeApplicationState"
+    #define TRANSITION_CTOR_ARGS ""
+
+    <<#define SPACES>>
     <<#define NEWLINE>>
     <<#define BEGIN_HEADER_GUARD>>
     <<#define END_HEADER_GUARD>>
@@ -1751,17 +1859,312 @@ Code generation constants and macros
     <<#define END_CONSTRUCTOR>>
     <<#define EMIT_TRANSITION_FUNCTION_ON_TRANSITION>>
     <<#define END_PUBLIC_SECTION>>
-    <<#define END_BLOCK>>
     <<#define END_CLASS>>
     <<#define END_CLASS_WITH_INSTANCE>>
     <<#define EXTERN>>
     <<#define INSTANCE>>
+    <<#define ASSIGNMENT>>
+    <<#define FUNCTION_DECL>>
+    <<#define FUNCTION>>
+    <<#define POINTER_REFERENCE>>
     <<#define BEGIN_COMMENT>>
     <<#define END_COMMENT>>
     <<#define HEX_VALUE>>
     <<#define DECIMAL_VALUE>>
     <<#define PRINT_VALUE>>
     <<#define END_STATEMENT>>
+    <<#define EMIT_STATEMENT>>
+@
+
+This macro expands the indentation count into a set of spaces.
+
+<<#define SPACES>>=
+    #define SPACES(file, indentation) \
+        for (int spaces = 0; spaces < *indentation; ++spaces) \
+            fputc(' ', (file))
+@
+
+This macro emits a newline.
+
+<<#define NEWLINE>>=
+    #define NEWLINE(file) fprintf((file), "\n")
+@
+
+This macro begins a header guard block.
+
+<<#define BEGIN_HEADER_GUARD>>=
+    #define BEGIN_HEADER_GUARD(file, name, indentation) \
+            SPACES(file, indentation); \
+            fprintf((file), "#ifndef  %s_HEADER_GUARD", name); \
+            NEWLINE(file); \
+            SPACES(file, indentation); \
+            fprintf((file), "# define %s_HEADER_GUARD", name); \
+            NEWLINE(file); \
+            NEWLINE(file); \
+            *(indentation) += INDENT
+@
+
+This macro ends the header guard block.
+
+<<#define END_HEADER_GUARD>>=
+    #define END_HEADER_GUARD(file, name, indentation) \
+            NEWLINE(file); \
+            SPACES(file, indentation); \
+            fprintf((file), "#endif //%s_HEADER_GUARD", name); \
+            NEWLINE(file); \
+            *(indentation) -= INDENT
+@
+
+This macro adds includes to our source file.
+
+<<#define ADD_INCLUDES>>=
+    #define ADD_INCLUDES(file, name, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "#include <xparse_runtime.h>"); \
+        NEWLINE(file); \
+        SPACES(file, indentation); \
+        fprintf((file), "#include <%s>", (name)); \
+        NEWLINE(file); \
+        NEWLINE(file)
+@
+
+This macro begins a C block.
+
+<<#define BEGIN_BLOCK>>=
+    #define BEGIN_BLOCK(file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "{"); \
+        NEWLINE(file); \
+        *(indentation) += INDENT
+@
+
+This macro ends a C block.
+
+<<#define END_BLOCK>>=
+    #define END_BLOCK(file, indentation) \
+        *(indentation) -= INDENT; \
+        SPACES(file, indentation); \
+        fprintf((file), "} ")
+@
+
+This macro begins a C++ namespace.
+
+<<#define BEGIN_NAMESPACE>>=
+    #define BEGIN_NAMESPACE(file, name, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "namespace %s", (name)); \
+        NEWLINE(file); \
+        BEGIN_BLOCK(file, indentation)
+@
+
+This macro begins a class definition.
+
+<<#define BEGIN_CLASS>>=
+    #define BEGIN_CLASS(className, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "class %s ", (className));
+@
+
+This macro ends a class definition.
+
+<<#define END_CLASS>>=
+    #define END_CLASS(file, indentation) \
+        fputc(';', (file)); \
+        NEWLINE(file)
+@
+
+This macro ends a class definition and creates an instance of that class.
+
+<<#define END_CLASS_WITH_INSTANCE>>=
+    #define END_CLASS_WITH_INSTANCE(className, transitionName, nextState, file, indentation) \
+        fputc(';', (file)); \
+        NEWLINE(file); \
+        NEWLINE(file); \
+        EXTERN(file, indentation); \
+        INSTANCE(className, transitionName, file, indentation); \
+        END_STATEMENT(file, indentation); \
+        NEWLINE(file)
+@
+
+This macro creates and extends statement for a derived class.
+
+<<#define CLASS_EXTENDS>>=
+    #define PUBLIC "public"
+    #define PRIVATE "private"
+    #define PROTECTED "protected"
+
+    #define CLASS_EXTENDS(scope, parentClass, file, indentation) \
+        fprintf((file), ": %s %s", scope, parentClass)
+@
+
+This macro begins a public section in a class.
+
+<<#define BEGIN_PUBLIC_SECTION>>=
+    #define BEGIN_PUBLIC_SECTION(file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "public:"); \
+        NEWLINE(file); \
+        *(indentation) += INDENT
+@
+
+This macro ends a public section in a class.
+
+<<#define END_PUBLIC_SECTION>>=
+    #define END_PUBLIC_SECTION(file, indentation) \
+        *(indentation) -= INDENT
+@
+
+This macro begins a class constructor.
+
+<<#define BEGIN_CONSTRUCTOR>>=
+    #define BEGIN_CONSTRUCTOR(className, args, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "%s(%s)", (className), (args)); \
+        NEWLINE(file)
+@
+
+This macro ends a class constructor.
+
+<<#define END_CONSTRUCTOR>>=
+    #define END_CONSTRUCTOR(className, file, indentation)
+@
+
+This macro begins an argument assignment block for a constructor.
+
+<<#define BEGIN_CTR_ARG_ASSIGNS>>=
+    #define BEGIN_CTR_ARG_ASSIGNS(file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), ":"); \
+        NEWLINE(file); \
+        *(indentation) += INDENT
+@
+
+This macro ends an argument assignment block for a constructor.
+
+<<#define END_CTOR_ARG_ASSIGNS>>=
+    #define END_CTOR_ARG_ASSIGNS(file, indentation) \
+        *(indentation) -= INDENT
+@
+
+This macro emits the constructor argument assignments for a Transition derived
+type's constructor.
+
+<<#define EMIT_TRANSITION_CTOR_ARGS>>=
+    #define EMIT_TRANSITION_CTOR_ARGS(state, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "Transition(&%s)", (state)); \
+        NEWLINE(file)
+@
+
+This macro emits the onTransition function declaration for a type deriving from
+Transition.
+
+<<#define EMIT_TRANSITION_FUNCTION_ON_TRANSITION>>=
+    #define EMIT_TRANSITION_FUNCTION_ON_TRANSITION(file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "virtual EStatus onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const;"); \
+        NEWLINE(file)
+@
+
+This macro modifies the declaration provided after it to make it extern.
+
+<<#define EXTERN>>=
+    #define EXTERN(file, indentation) \
+        SPACES(file, indentation); \
+        fputs("extern ", (file)); \
+        NEWLINE(file)
+@
+
+This macro creates an instance of the provided type.
+
+<<#define INSTANCE>>=
+    #define INSTANCE(type, name, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "%s %s", (type), (name))
+@
+
+This macro wrappers an assignment operation.
+
+<<#define ASSIGNMENT>>=
+    #define ASSIGNMENT(file, indentation) \
+        fputs(" = ", (file))
+@
+
+This macro declares a function.
+
+<<#define FUNCTION_DECL>>=
+    #define FUNCTION_DECL(name, returnType, args, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "%s %s(%s);", (returnType), (name), (args))
+@
+
+This macro begins a function definition.
+
+<<#define FUNCTION>>=
+    #define FUNCTION(name, returnType, args, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "%s %s(%s)", (returnType), (name), (args))
+@
+
+This macro emits the given statement at the correct indentation level.
+
+<<#define EMIT_STATEMENT>>=
+    #define EMIT_STATEMENT(statement, file, indentation) \
+        SPACES(file, indentation); \
+        fputs(statement, file); \
+        NEWLINE(file)
+@
+
+This macro creates a pointer reference in an array.
+
+<<#define POINTER_REFERENCE>>=
+    #define POINTER_REFERENCE(var, file, indentation) \
+        SPACES(file, indentation); \
+        fprintf((file), "&%s,", (var)); \
+        NEWLINE(file)
+@
+
+This macro begins a comment.
+
+<<#define BEGIN_COMMENT>>=
+    #define BEGIN_COMMENT(file, indentation) \
+        SPACES(file, indentation); \
+        fputs("/* ", (file))
+@
+
+This macro ends a comment.
+
+<<#define END_COMMENT>>=
+    #define END_COMMENT(file, indentation) \
+        fputs(" */", (file))
+@
+
+This macro outputs a hex value.
+
+<<#define HEX_VALUE>>=
+    #define HEX_VALUE(byte, file, indentation) \
+        fprintf((file), "0x%02x    ", (byte))
+@
+
+This macro outputs a decimal value.
+
+<<#define DECIMAL_VALUE>>=
+    #define DECIMAL_VALUE(byte, file, indentation) \
+        fprintf((file), "%3d    ", (byte))
+@
+
+This macro outputs a character literal.
+
+<<#define PRINT_VALUE>>=
+    #define PRINT_VALUE(byte, file, indentation) \
+        fprintf((file), "'%c'    ", (byte))
+@
+
+This macro ends a statement.
+
+<<#define END_STATEMENT>>=
+    #define END_STATEMENT(file, indentation) \
+        fputc(';', (file))
 @
 
 [flex_website]: http://flex.sourceforge.net/ "flex: The Fast Lexical Analyzer"
