@@ -18,12 +18,12 @@ ICONT=icont
 # MAN7EXT is the extension for the nowebstyle man page (usually 7)
 # TEXINPUTS is the directory for TeX macro files
 # ELISP is the directory for emacs lisp files, or /dev/null not to install
-BIN=/usr/local/noweb
-LIB=/usr/local/noweb/lib
-MAN=/usr/local/noweb/man
+BIN=$(BUILD_DIR)/noweb/bin
+LIB=$(BUILD_DIR)/noweb/lib
+MAN=$(BUILD_DIR)/noweb/man
 MANEXT=1
 MAN7EXT=7
-TEXINPUTS=/usr/local/tex/inputs
+TEXINPUTS=$(BUILD_DIR)/noweb/tex/inputs
 ELISP=/dev/null
 
 # change WEAVE if you want a different version of noweave to be installed
