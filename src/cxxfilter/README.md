@@ -113,6 +113,7 @@ State Machine
 
 The state machine is shown below.
 
+````c++
     <<luhncheck.xparse>>=
 
     state initial {
@@ -151,6 +152,7 @@ The state machine is shown below.
         state->initial
     }
     @
+````
 
 To read the state machine, assume that it is a simple cyclic graph.  The states
 are the nodes, and the transitions are the edges.  In this state machine, there
@@ -184,6 +186,7 @@ setting up our luhn check state when we first encounter digits, checking
 these digits for luhn via fast fail logic, dumping non-luhn digits, and
 replacing Luhn sequences.  Here is the skeleton of our source file.
 
+````c++
     <<cxxfilter.cpp>>=
     #include <xparse_runtime.h>
     #include <xparse_generated.h>
@@ -210,11 +213,13 @@ far the easiest.
         return E_SUCCESS;
     }
     @
+````
 
 When we first encounter a digit, we enter the luhn state via the LuhnGather
 transition.  Here, we want to reset our internal state, and append this digit
 to our luhn buffer.
 
+````c++
     <<transition::LuhnGather::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::LuhnGather::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
@@ -225,12 +230,14 @@ to our luhn buffer.
         return E_SUCCESS;
     }
     @
+````
 
 The LuhnAppendDigit and LuhnAppendNonDigit transitions are also
 straight-forward.  Here, we just append either a digit or non-digit.  The
 distinction comes down to our digit counts, which allow us to fail fast in cases
 where the digit sequence is less than the minimum of 14 digits.
 
+````c++
     <<transition::LuhnAppendDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::LuhnAppendDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
@@ -240,9 +247,11 @@ where the digit sequence is less than the minimum of 14 digits.
         return E_SUCCESS;
     }
     @
+````
 
 Here is the non-digit form.
 
+````c++
     <<transition::LuhnAppendNonDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::LuhnAppendNonDigit::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
@@ -252,6 +261,7 @@ Here is the non-digit form.
         return E_SUCCESS;
     }
     @
+````
 
 Finally, we can perform the luhn checking transition.  We will encapsulate the
 luhn checking logic away from this transition for simplicity sake.  We are
@@ -261,6 +271,7 @@ these from the buffer.  If *any* luhn sequence is found, then it will return a
 status of E LUHN, which we will pass back to the caller.  It is the caller's
 responsibility to call the cavalry or do whatever else must be done.
 
+````c++
     <<transition::LuhnCheck::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::LuhnCheck::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
@@ -275,11 +286,13 @@ responsibility to call the cavalry or do whatever else must be done.
         return status;
     }
     @
+````
 
 Now, we can describe the LuhnState object, which extends ApplicationState.  It
 contains a vector to hold the bytes that we are gathering for our Luhn check,
 and a count of digits encountered.
 
+````c++
     <<struct LuhnState;>>=
     struct LuhnState : public ApplicationState
     {
@@ -315,11 +328,13 @@ and a count of digits encountered.
     <<const char* LuhnState::bytes();>>
     <<size_t LuhnState::size();>>
     @
+````
 
 In this state class, we have a few typedefs to make life easier.  This includes
 the buffer type in which we will be staging bytes, and some containers we will
 be using for Luhn checking.  They are defined here.
 
+````c++
     <<LuhnState public typedefs>>=
     typedef
     std::vector<unsigned char>
@@ -341,10 +356,12 @@ be using for Luhn checking.  They are defined here.
     ByteBuffer::reverse_iterator
     reverse_iterator;
     @
+````
 
 The LuhnState constructor will reserve a decent size for the buffer to reduce
 allocation calls.  It will also call reset() to set the count to 0.
 
+````c++
     <<LuhnState::LuhnState();>>=
     LuhnState::LuhnState()
     {
@@ -352,9 +369,11 @@ allocation calls.  It will also call reset() to set the count to 0.
         reset();
     }
     @
+````
 
 Here is reset.  Clears the buffer and sets count to 0.
 
+````c++
     <<void LuhnState::reset();>>=
     void LuhnState::reset()
     {
@@ -362,18 +381,22 @@ Here is reset.  Clears the buffer and sets count to 0.
         count = 0;
     }
     @
+````
 
 AppendNonDigit just appends the byte to the buffer.
 
+````c++
     <<void LuhnState::appendNonDigit(unsigned char byte);>>=
     void LuhnState::appendNonDigit(unsigned char byte)
     {
         buffer.push_back(byte);
     }
     @
+````
 
 AppendDigit increments the count and then calls appendNonDigit.
 
+````c++
     <<void LuhnState::appendDigit(unsigned char digit);>>=
     void LuhnState::appendDigit(unsigned char digit)
     {
@@ -381,6 +404,7 @@ AppendDigit increments the count and then calls appendNonDigit.
         appendNonDigit(digit);
     }
     @
+````
 
 This leaves the luhn check logic itself.  We know at this point that we have a
 buffer containing characters, some of which are digits, and a count of digits in
@@ -394,6 +418,7 @@ even nested matches without masking bytes in between.  If any matches are found,
 we iterate through the list scrubbing all digits, and then return an E LUHN
 status code.
 
+````c++
     <<EStatus LuhnState::check();>>=
     #define MINIMUM_LUHN 14
     #define MAXIMUM_LUHN 16
@@ -411,11 +436,13 @@ status code.
         return result;
     }
     @
+````
 
 The Luhn sequence list is a list of pairs of iterators representing the
 beginning and end of a Luhn sequence.  We use a reverse iterator to go through
 the buffer from right to left, adding matching Luhn sequences to this list.
 
+````c++
     <<build luhn sequence list>>=
     IteratorPairsList luhnList;
 
@@ -426,10 +453,12 @@ the buffer from right to left, adding matching Luhn sequences to this list.
         findLuhnSequence(i, rend, luhnList);
     }
     @
+````
 
 If our list is not empty, then we will set the returned status to E LUHN, and
 proceed to scrub each entry in the list.
 
+````c++
     <<scrub luhn sequences>>=
     if (!luhnList.empty())
         result = E_LUHN;
@@ -440,6 +469,7 @@ proceed to scrub each entry in the list.
         scrubLuhnDigits(i->first, i->second);
     }
     @
+````
 
 Now, we can focus on the code that will find a Luhn sequence from right to left.
 We want to perform a greedy match, meaning that we want to find the largest
@@ -449,6 +479,7 @@ second and first when appending to the list.  We do this because we want to
 convert from reverse iterators to iterators.  This logic turns second into the
 beginning of the sequence, and first into the exclusive end of the sequence.
 
+````c++
     <<void LuhnState::findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList);>>=
     void LuhnState::findLuhnSequence(reverse_iterator i, reverse_iterator rend, IteratorPairsList& luhnList)
     {
@@ -466,11 +497,13 @@ beginning of the sequence, and first into the exclusive end of the sequence.
         }
     }
     @
+````
 
 Here, we set the initial state.  Our first iterator is set to the first digit in
 the sequence, or rend if no digits are found.  Our number of digits is 0, parity
 is set to false, resultFound is set to false, and sum is set to 0.
 
+````c++
     <<set initial state>>=
     reverse_iterator first = first_digit(i, rend);
     reverse_iterator second;
@@ -479,12 +512,14 @@ is set to false, resultFound is set to false, and sum is set to 0.
     bool resultFound = false;
     int sum = 0;
     @
+````
 
 For each digit found, we will compute the value of the digit, and add this value
 to our sum.  The parity flag is used for determining whether we add the value
 or double the value.  Finally, we increment the number of digits and flip the
 parity bit for the next run.
 
+````c++
     <<luhn sum>>=
     int val = *i - '0';
     if (parity) val <<= 1;
@@ -497,6 +532,7 @@ parity bit for the next run.
     ++digits;
     parity^=true;
     @
+````
 
 Our loop terminates when either the end of the buffer is encountered, or when we
 have found more than MAXIMUM LUHN digits.  This allows us to apply the following
@@ -509,6 +545,7 @@ sequence.  This is because we have to convert these iterators back to regular
 iterators when we add them to our list.  First becomes the end iterator, and
 second becomes the begin iterator.
 
+````c++
     <<check sequence>>=
     if (digits >= MINIMUM_LUHN)
     {
@@ -519,6 +556,7 @@ second becomes the begin iterator.
         }
     }
     @
+````
 
 The last thing we need for this algorithm to work is a way to scan to the next
 digit.  This is provided by the first digit function, which, given a pair of
@@ -526,6 +564,7 @@ iterators, will return either an iterator to the first digit, or the end of the
 sequence if a digit is not found.  This function allows us to skip non-digits in
 a sequence efficiently.
 
+````c++
     <<reverse_iterator LuhnState::first_digit(reverse_iterator begin, reverse_iterator end);>>=
     LuhnState::reverse_iterator LuhnState::first_digit(LuhnState::reverse_iterator begin, LuhnState::reverse_iterator end)
     {
@@ -538,11 +577,13 @@ a sequence efficiently.
         return begin;
     }
     @
+````
 
 Once we have found Luhn sequences, we need to scrub them from our buffer.  This
 is handled by the scrubLuhnDigits.  For each byte in the sequence, if we
 encounter a digit, change it to our scrub byte.
 
+````c++
     <<void LuhnState::scrubLuhnDigits(iterator begin, iterator end);>>=
     #define SCRUB_BYTE 'X'
 
@@ -555,27 +596,32 @@ encounter a digit, change it to our scrub byte.
         }
     }
     @
+````
 
 This concludes our Luhn checking logic.  There are two final functions needed
 for LuhnState.  The first returns a pointer to the buffer for use by
 ostream::write.  Since STL vector stores data in contiguous memory, this
 operation works.  It is actually mentioned in the C++ standard as safe.
 
+````c++
     <<const char* LuhnState::bytes();>>=
     const char* LuhnState::bytes()
     {
         return (const char*)&buffer[0];
     }
     @
+````
 
 The second function returns the current size of the buffer.
 
+````c++
     <<size_t LuhnState::size();>>=
     size_t LuhnState::size()
     {
         return buffer.size();
     }
     @
+````
 
 cxxfilter application
 ---------------------
@@ -586,6 +632,7 @@ function, initializeApplicationState, which sets up our state machine.  Then, it
 loops on standard input, reading characters and passing these to our filter.
 This is the main routine:
 
+````c++
     <<int main(int argc, char* argv[]);>>=
     using namespace std;
 
@@ -610,6 +657,7 @@ This is the main routine:
         }
     }
     @
+````
 
 [noweb_website]: http://www.cs.tufts.edu/~nr/noweb/ "Noweb home page"
 [markdown_wiki]: http://en.wikipedia.org/wiki/Markdown "Markdown"
