@@ -201,10 +201,12 @@ replacing Luhn sequences.  Here is the skeleton of our source file.
 
     <<int main(int argc, char* argv[]);>>
     @
+````
 
 Our base case, in which we just write non-Luhn bytes to the output stream, is by
 far the easiest.
 
+````c++
     <<transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out);>>=
     EStatus transition::Ignore::onTransition(unsigned char byte, ApplicationState& state, std::ostream& out) const
     {
